@@ -1,0 +1,213 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TRACEABILITY</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        /* General styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header, footer {
+            background-color: #007BFF;
+            color: white;
+            text-align: center;
+            padding: 1px 0;
+        }
+
+        .content {
+            flex: 1;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        /* Styling for the sections */
+        .section {
+            border: 2px solid #007BFF;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+        }
+
+        /* Styling for the QR form */
+        .qr-form {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .form-button {
+            background-color: #007BFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .form-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Styling for the table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #007BFF;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Section -->
+    <header>
+        <h1>TRACEABILITY</h1>
+    </header>
+
+    <!-- Main Content Section -->
+    <div class="content">
+        <!-- QR Code Generator Section -->
+        <div class="section">
+            <h1>QR Code Generator</h1>
+            <form id="qr-form" method="post" action="{% url 'generate_qr_codes' %}">
+                {% csrf_token %}
+                <label for="lot_number">Enter Lot Number:</label>
+                <input type="number" id="lot_number" name="lot_number" required>
+                <button type="submit" class="form-button">Generate QR Codes</button>
+            </form>
+            <div id="qr-response"></div>
+        </div>
+
+        <!-- Torque Data Records Section -->
+        <div class="section">
+            <h1>Torque Data Records</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Part Number</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Shift</th>
+                        <th>Station 1 Result</th>
+                        <th>Station 2 Result</th>
+                        <th>Station 3 Result</th>
+                        <th>Station 4 Result</th>
+                        <th>Station 5 Result</th>
+                    </tr>
+                </thead>
+                <tbody id="torque-table-body">
+                    <!-- Table rows will be populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Footer Section -->
+    <footer>
+        <p>&copy; 2024 QR Generator and Traceability.</p>
+    </footer>
+
+    <script>
+        // Function to fetch torque data and update the table
+        function fetchTableData() {
+            $.ajax({
+                url: "{% url 'fetch_torque_data' %}",
+                method: "GET",
+                success: function(response) {
+                    const tableBody = document.getElementById("torque-table-body");
+                    tableBody.innerHTML = "";  // Clear current table content
+
+                    response.data.forEach(row => {
+                        const tableRow = `
+                            <tr>
+                                <td>${row.part_number}</td>
+                                <td>${row.date}</td>
+                                <td>${row.time}</td>
+                                <td>${row.shift}</td>
+                                <td>${row.st1_result}</td>
+                                <td>${row.st2_result}</td>
+                                <td>${row.st3_result}</td>
+                                <td>${row.st4_result}</td>
+                                <td>${row.st5_result}</td>
+                            </tr>
+                        `;
+                        tableBody.innerHTML += tableRow;
+                    });
+                },
+                error: function(xhr, status, error) {
+                    console.error("Failed to fetch data:", error);
+                }
+            });
+        }
+
+        // Fetch data every 5 seconds
+        setInterval(fetchTableData, 5000);
+
+        // Fetch data on page load
+        document.addEventListener("DOMContentLoaded", fetchTableData);
+
+        // Handle form submission with AJAX for QR generation
+        $("#qr-form").submit(function(e) {
+            e.preventDefault();
+            $.ajax({
+                url: $(this).attr("action"),
+                method: "POST",
+                data: $(this).serialize(),
+                success: function(response) {
+                    $("#qr-response").html(`<p style="color:green;">${response.message}</p>`);
+    
+                    // If lot is completed, reset input field and prompt for a new lot
+                    if (response.message.includes("completed")) {
+                        $("#lot_number").val("");  // Clear input field
+                        $("#lot_number").focus();  // Focus on input field for new entry
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Failed to generate QR codes:", error);
+                    $("#qr-response").html(`<p style="color:red;">Error: ${xhr.responseText}</p>`);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
