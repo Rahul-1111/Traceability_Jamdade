@@ -3,26 +3,28 @@ from pymodbus.exceptions import ModbusIOException
 import time
 import logging
 from track.models import TraceabilityData
-from datetime import datetime, time
+from datetime import datetime
+import struct
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_current_shift() -> str:
+def get_current_shift():
+    """ Determines the current shift based on time """
     now = datetime.now().time()
-    if time(7, 0) <= now < time(15, 30):
+    if now >= datetime.strptime("07:00", "%H:%M").time() and now < datetime.strptime("15:30", "%H:%M").time():
         return 'Shift 1'
-    elif time(15, 30) <= now < time(23, 59):
+    elif now >= datetime.strptime("15:30", "%H:%M").time() and now < datetime.strptime("23:59", "%H:%M").time():
         return 'Shift 2'
     else:
         return 'Shift 3'
 
-# Modbus connection details
-PLC_HOST = "192.168.3.99"  # Updated IP address of the Modbus server
+# Modbus Connection Details
+PLC_HOST = "192.168.3.99"
 PLC_PORT = 502
 
-# Define the register addresses for stations
+# Define Modbus Register Addresses for Each Station
 REGISTERS = {
     "st1": {"qr": 5100, "result": 5150, "trigger": 5152},
     "st2": {"qr": 5200, "result": 5250, "trigger": 5252},
@@ -31,36 +33,43 @@ REGISTERS = {
     "st5": {"qr": 5500, "result": 5550, "trigger": 5552},
 }
 
-# Function to connect to the Modbus server
 def connect_to_modbus_client(client, retries=3, delay=2):
+    """ Attempts to connect to the Modbus server with retries """
     for attempt in range(retries):
         if client.connect():
             logger.info("Successfully connected to Modbus server.")
             return True
-        else:
-            logger.warning(f"Connection attempt {attempt + 1} failed. Retrying in {delay} seconds...")
-            time.sleep(delay)
+        logger.warning(f"Connection attempt {attempt + 1} failed. Retrying in {delay} seconds...")
+        time.sleep(delay)
     logger.error("Failed to connect to Modbus server after multiple attempts.")
     return False
 
-# Function to read data from a Modbus register
 def read_register(client, address, num_registers=1):
+    """ Reads Modbus registers and returns the data """
     try:
         response = client.read_holding_registers(address, num_registers)
-        if not response.isError():
-            logger.info(f"Read successful: {response.registers}")
+        if response and not response.isError():
             return response.registers
-        else:
-            logger.error(f"Error reading registers: {response}")
-            return None
+        logger.error(f"Error reading register {address}: {response}")
     except ModbusIOException as e:
-        logger.error(f"Modbus IO error while reading registers: {e}")
+        logger.error(f"Modbus IO error while reading register {address}: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error while reading registers: {e}")
+        logger.error(f"Unexpected error while reading register {address}: {e}")
     return None
 
-# Function to reset station trigger
+def write_register(client, address, value):
+    """ Writes a value to a Modbus register """
+    try:
+        response = client.write_register(address, value)
+        if response and not response.isError():
+            logger.info(f"Successfully wrote {value} to register {address}")
+        else:
+            logger.error(f"Error writing to register {address}: {response}")
+    except Exception as e:
+        logger.error(f"Error writing to register {address}: {e}")
+
 def reset_station_trigger(client, station):
+    """ Resets the station trigger by writing 0 to the trigger register """
     try:
         trigger_address = REGISTERS[station]["trigger"]
         write_register(client, trigger_address, 0)
@@ -68,83 +77,113 @@ def reset_station_trigger(client, station):
     except KeyError:
         logger.error(f"Trigger register not defined for {station}")
 
-# Helper function to write to a register
-def write_register(client, address, data):
+def convert_registers_to_string(registers):
+    """ Converts Modbus register values into a clean ASCII string (Little-Endian Fix). """
     try:
-        response = client.write_registers(address, data)
-        if not response.isError():
-            logger.info(f"Write successful to {address}")
-        else:
-            logger.error(f"Error writing registers: {response}")
-    except ModbusIOException as e:
-        logger.error(f"Modbus IO error while writing registers: {e}")
+        byte_array = b"".join(struct.pack("<H", reg) for reg in registers)  # 🔄 Changed '>' to '<'
+        decoded_string = byte_array.decode("ascii", errors="ignore")
+        return decoded_string.replace("\x00", "").strip()  # Remove null bytes and spaces
     except Exception as e:
-        logger.error(f"Unexpected error while writing registers: {e}")
+        logger.error(f"Error converting register data to string: {e}")
+        return ""
 
-# Fetch station data using the working Modbus communication functions
 def fetch_station_data(client):
+    """ Fetch QR code and result values from all stations (removes trigger read) """
     station_data = {}
+
     for station, reg in REGISTERS.items():
         try:
-            qr_count = read_register(client, reg["qr"])
-            result_count = read_register(client, reg["result"])
-            trigger = read_register(client, reg["trigger"])
+            qr_registers = read_register(client, reg["qr"], 50)  # Read 50 registers for QR
+            result = read_register(client, reg["result"], 1)  # Read 1 register for result
 
-            if None in (qr_count, result_count, trigger):
-                logger.error(f"Failed to fetch data for {station}")
+            if qr_registers is None or result is None:
+                logger.error(f"❌ Failed to fetch data for {station}")
                 continue
 
+            # ✅ Convert registers into clean ASCII string
+            qr_string = convert_registers_to_string(qr_registers)
+            result_value = result[0] if result else -1  # Default to -1 if result is missing
+
+            # ✅ Log the raw register values
+            logger.info(f"🔹 {station}: Raw QR Data: {qr_registers} → {qr_string}")
+            logger.info(f"🔹 {station}: Raw Result Register Value: {result_value}")
+
+            # ✅ Ensure correct result mapping
+            if result_value == 1:
+                result_status = "OK"
+            elif result_value == 0:
+                result_status = "NOT OK"
+            else:
+                result_status = "UNKNOWN"  # If result is neither 1 nor 0
+
+            logger.info(f"✅ {station}: Final Processed Result: {result_status}")
+
             station_data[station] = {
-                "qr": qr_count[0],
-                "result": result_count[0],
-                "trigger": trigger[0],
+                "qr": qr_string,
+                "result": result_status,  # ✅ Store as "OK" or "NOT OK"
             }
-            logger.info(f"{station}: {station_data[station]}")
+
         except Exception as e:
-            logger.error(f"Error fetching data for {station}: {e}")
+            logger.error(f"⚠️ Error fetching data for {station}: {e}")
+
     return station_data
 
-# Update traceability data based on station data
 def update_traceability_data():
+    """ Continuously fetch data from Modbus and update the database """
     shift = get_current_shift()
+    client = ModbusTcpClient(PLC_HOST, port=PLC_PORT, timeout=5)
+
+    if not connect_to_modbus_client(client):
+        logger.error("Cannot proceed without Modbus connection. Exiting...")
+        return
+
     try:
-        client = ModbusTcpClient(PLC_HOST, port=PLC_PORT, timeout=5)  # 5-second timeout for connection
-
-        if not connect_to_modbus_client(client):
-            logger.error("Failed to connect to Modbus server after multiple attempts.")
-            return
-
         while True:
             station_data = fetch_station_data(client)
-            for station, data in station_data.items():
-                if data["trigger"] == 1:  # Process data if trigger is active
-                    try:
-                        # Update or create database records
-                        TraceabilityData.objects.update_or_create(
-                            station=station,
-                            shift=shift,
-                            date=datetime.today().date(),
-                            defaults={
-                                "qr_count": data["qr"],
-                                "result_count": data["result"],
-                                "timestamp": datetime.now(),
-                            },
-                        )
-                        logger.info(f"Updated data for {station}: {data}")
-                        reset_station_trigger(client, station)
-                    except Exception as e:
-                        logger.error(f"Error updating traceability data for {station}: {e}")
-            time.sleep(5)  # Fetch data periodically
+
+            # ✅ Log the entire station_data dictionary
+            logger.info(f"Fetched Data from PLC: {station_data}")
+
+            # Use ST1 QR Code as part number (Modify if needed)
+            part_number = station_data.get("st1", {}).get("qr", "").strip() or "UNKNOWN"
+            logger.info(f"Final QR Code for database: {part_number}")
+
+            # ✅ Log each station's result before saving
+            for station in REGISTERS.keys():
+                result_value = station_data.get(station, {}).get("result")
+                logger.info(f"{station} - Processed Result: {result_value}")
+
+            try:
+                obj, created = TraceabilityData.objects.update_or_create(
+                    part_number=part_number,
+                    date=datetime.today().date(),
+                    defaults={
+                        "time": datetime.now().time(),
+                        "shift": shift,
+                        # ✅ Use `None` instead of "NOT OK" if the result is missing
+                        "st1_result": station_data.get("st1", {}).get("result"),
+                        "st2_result": station_data.get("st2", {}).get("result"),
+                        "st3_result": station_data.get("st3", {}).get("result"),
+                        "st4_result": station_data.get("st4", {}).get("result"),
+                        "st5_result": station_data.get("st5", {}).get("result"),
+                    },
+                )
+
+                logger.info(f"{'Created' if created else 'Updated'} record for {obj.part_number}")
+
+                # ✅ Log the stored database record
+                logger.info(f"Stored in DB: {obj}")
+
+                # Reset triggers for all stations
+                for station in REGISTERS.keys():
+                    reset_station_trigger(client, station)
+
+            except Exception as e:
+                logger.error(f"Error updating traceability data: {e}")
+
+            time.sleep(5)  # ✅ Corrected 'time.sleep' usage
 
     except Exception as e:
         logger.error(f"Critical error in traceability update: {e}")
     finally:
         client.close()
-
-# Main entry point
-if __name__ == "__main__":
-    try:
-        logger.info("Starting traceability data update process...")
-        update_traceability_data()
-    except KeyboardInterrupt:
-        logger.info("Process interrupted by user.")
