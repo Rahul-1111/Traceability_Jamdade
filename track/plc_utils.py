@@ -80,9 +80,9 @@ def reset_station_trigger(client, station):
 def convert_registers_to_string(registers):
     """ Converts Modbus register values into a clean ASCII string (Little-Endian Fix). """
     try:
-        byte_array = b"".join(struct.pack("<H", reg) for reg in registers)  # 🔄 Changed '>' to '<'
+        byte_array = b"".join(struct.pack("<H", reg) for reg in registers)
         decoded_string = byte_array.decode("ascii", errors="ignore")
-        return decoded_string.replace("\x00", "").strip()  # Remove null bytes and spaces
+        return decoded_string.replace("\x00", "").strip()
     except Exception as e:
         logger.error(f"Error converting register data to string: {e}")
         return ""
@@ -97,34 +97,32 @@ def fetch_station_data(client):
             result = read_register(client, reg["result"], 1)  # Read 1 register for result
 
             if qr_registers is None or result is None:
-                logger.error(f"❌ Failed to fetch data for {station}")
+                logger.error(f"Failed to fetch data for {station}")
                 continue
 
-            # ✅ Convert registers into clean ASCII string
+            # Convert registers into clean ASCII string
             qr_string = convert_registers_to_string(qr_registers)
             result_value = result[0] if result else -1  # Default to -1 if result is missing
 
-            # ✅ Log the raw register values
-            logger.info(f"🔹 {station}: Raw QR Data: {qr_registers} → {qr_string}")
-            logger.info(f"🔹 {station}: Raw Result Register Value: {result_value}")
+            logger.info(f"{station}: QR Data: {qr_string} | Raw Result Register: {result_value}")
 
-            # ✅ Ensure correct result mapping
+            # Ensure correct result mapping
             if result_value == 1:
                 result_status = "OK"
             elif result_value == 0:
                 result_status = "NOT OK"
             else:
-                result_status = "UNKNOWN"  # If result is neither 1 nor 0
+                result_status = "UNKNOWN"
 
-            logger.info(f"✅ {station}: Final Processed Result: {result_status}")
+            logger.info(f"{station}: Final Processed Result: {result_status}")
 
             station_data[station] = {
                 "qr": qr_string,
-                "result": result_status,  # ✅ Store as "OK" or "NOT OK"
+                "result": result_status,
             }
 
         except Exception as e:
-            logger.error(f"⚠️ Error fetching data for {station}: {e}")
+            logger.error(f"Error fetching data for {station}: {e}")
 
     return station_data
 
@@ -140,46 +138,33 @@ def update_traceability_data():
     try:
         while True:
             station_data = fetch_station_data(client)
-
-            # ✅ Log the entire station_data dictionary
             logger.info(f"Fetched Data from PLC: {station_data}")
 
-            # Use ST1 QR Code as part number (Modify if needed)
-            part_number = station_data.get("st1", {}).get("qr", "").strip() or "UNKNOWN"
-            logger.info(f"Final QR Code for database: {part_number}")
-
-            # ✅ Log each station's result before saving
             for station in REGISTERS.keys():
-                result_value = station_data.get(station, {}).get("result")
-                logger.info(f"{station} - Processed Result: {result_value}")
+                part_number = station_data.get(station, {}).get("qr", "").strip()
+                if not part_number:
+                    continue  # Skip stations where no QR was scanned
 
-            try:
-                obj, created = TraceabilityData.objects.update_or_create(
-                    part_number=part_number,
-                    date=datetime.today().date(),
-                    defaults={
-                        "time": datetime.now().time(),
-                        "shift": shift,
-                        # ✅ Use `None` instead of "NOT OK" if the result is missing
-                        "st1_result": station_data.get("st1", {}).get("result"),
-                        "st2_result": station_data.get("st2", {}).get("result"),
-                        "st3_result": station_data.get("st3", {}).get("result"),
-                        "st4_result": station_data.get("st4", {}).get("result"),
-                        "st5_result": station_data.get("st5", {}).get("result"),
-                    },
-                )
+                result_value = station_data.get(station, {}).get("result", "UNKNOWN")
+                logger.info(f"Storing {station}: Part {part_number} → Result {result_value}")
 
-                logger.info(f"{'Created' if created else 'Updated'} record for {obj.part_number}")
+                try:
+                    obj, created = TraceabilityData.objects.update_or_create(
+                        part_number=part_number,
+                        date=datetime.today().date(),
+                        defaults={
+                            "time": datetime.now().time(),
+                            "shift": shift,
+                            f"{station}_result": result_value,  # Store each station result in the correct field
+                        },
+                    )
 
-                # ✅ Log the stored database record
-                logger.info(f"Stored in DB: {obj}")
+                    logger.info(f"{'Created' if created else 'Updated'} record for {obj.part_number}")
 
-                # Reset triggers for all stations
-                for station in REGISTERS.keys():
                     reset_station_trigger(client, station)
 
-            except Exception as e:
-                logger.error(f"Error updating traceability data: {e}")
+                except Exception as e:
+                    logger.error(f"Error updating traceability data for {station}: {e}")
 
             time.sleep(5)  # ✅ Corrected 'time.sleep' usage
 

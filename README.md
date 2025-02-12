@@ -4,3 +4,6 @@ conda deactivate
 
 pip install -r requirements.txt
 pip freeze > requirements.txt
+
+python manage.py start_modbus
+python manage.py runserver
