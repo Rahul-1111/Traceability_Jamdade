@@ -11,7 +11,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_current_shift():
-    """ Determines the current shift based on time """
     now = datetime.now().time()
     if now >= datetime.strptime("07:00", "%H:%M").time() and now < datetime.strptime("15:30", "%H:%M").time():
         return 'Shift 1'
@@ -34,19 +33,17 @@ REGISTERS = {
 }
 
 def connect_to_modbus_client():
-    """ Keeps retrying to connect to the Modbus server indefinitely """
     client = ModbusTcpClient(PLC_HOST, port=PLC_PORT, timeout=5)
     
-    while True:  
+    while True:
         if client.connect():
             logger.info("✅ Successfully connected to Modbus server.")
             return client
         else:
             logger.warning("🔴 Modbus connection failed. Retrying in 5 seconds...")
-            time.sleep(5)  
+            time.sleep(5)
 
 def read_register(client, address, num_registers=1):
-    """ Reads Modbus registers and returns the data """
     try:
         response = client.read_holding_registers(address, num_registers)
         if response and not response.isError():
@@ -59,7 +56,6 @@ def read_register(client, address, num_registers=1):
     return None
 
 def write_register(client, address, value):
-    """ Writes a value to a Modbus register """
     try:
         response = client.write_register(address, value)
         if response and not response.isError():
@@ -70,7 +66,6 @@ def write_register(client, address, value):
         logger.error(f"❌ Error writing to register {address}: {e}")
 
 def convert_registers_to_string(registers):
-    """ Converts Modbus register values into a clean ASCII string """
     try:
         byte_array = b"".join(struct.pack("<H", reg) for reg in registers)
         decoded_string = byte_array.decode("ascii", errors="ignore")
@@ -80,7 +75,6 @@ def convert_registers_to_string(registers):
         return ""
 
 def fetch_station_data(client):
-    """ Fetch QR code and result values from all stations """
     station_data = {}
 
     for station, reg in REGISTERS.items():
@@ -92,12 +86,12 @@ def fetch_station_data(client):
                 logger.error(f"❌ Failed to fetch data for {station}")
                 continue
 
-            qr_string = convert_registers_to_string(qr_registers)
+            qr_string = convert_registers_to_string(qr_registers).strip()
+            qr_string = qr_string.replace("\x01", "")  # ✅ Remove unwanted characters
             result_value = result[0] if result else -1
 
             logger.info(f"🔹 {station}: QR Data: {qr_string} | Raw Result Register: {result_value}")
 
-            # Ensure correct result mapping
             result_status = "OK" if result_value == 1 else "NOT OK"
 
             station_data[station] = {
@@ -111,10 +105,8 @@ def fetch_station_data(client):
     return station_data
 
 def update_traceability_data():
-    """ Continuously fetch data from Modbus and update the database """
-    
-    while True:  
-        client = connect_to_modbus_client()  
+    while True:
+        client = connect_to_modbus_client()
 
         try:
             while True:
@@ -130,20 +122,19 @@ def update_traceability_data():
                     logger.info(f"📝 Storing {station}: Part {part_number} → Result {result_value}")
 
                     try:
-                        # ✅ Find the existing row using part_number, or create a new one
-                        obj, created = TraceabilityData.objects.update_or_create(
+                        # ✅ Update existing row instead of creating a duplicate
+                        obj, created = TraceabilityData.objects.get_or_create(
                             part_number=part_number,
                             date=datetime.today().date(),
-                            defaults={
-                                "time": datetime.now().time(),
-                                "shift": get_current_shift(),
-                                f"{station}_result": result_value,  
-                            },
+                            defaults={"time": datetime.now().time(), "shift": get_current_shift()},
                         )
+
+                        setattr(obj, f"{station}_result", result_value)  # ✅ Set correct station result
+                        obj.save()
 
                         logger.info(f"{'✅ Created' if created else '🔄 Updated'} record for {obj.part_number}")
 
-                        # ✅ WRITE RESULT BACK TO THE PLC TRIGGER REGISTER (PER STATION)
+                        # ✅ WRITE RESULT BACK TO PLC TRIGGER REGISTER
                         trigger_value = 1 if result_value == "OK" else 0  
                         write_register(client, reg["trigger"], trigger_value)
                         logger.info(f"✅ {station} trigger register {reg['trigger']} updated to {trigger_value}")
@@ -151,12 +142,12 @@ def update_traceability_data():
                     except Exception as e:
                         logger.error(f"❌ Error updating traceability data for {station}: {e}")
 
-                time.sleep(5)  
+                time.sleep(5)
 
         except Exception as e:
             logger.error(f"🚨 Critical error in traceability update: {e}")
             logger.warning("🔄 Reconnecting to Modbus server in 5 seconds...")
-            time.sleep(5)  
+            time.sleep(5)
 
         finally:
-            client.close()  
+            client.close()
