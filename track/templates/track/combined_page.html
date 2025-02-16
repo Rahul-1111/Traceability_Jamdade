@@ -156,19 +156,19 @@
                 success: function(response) {
                     const tableBody = document.getElementById("torque-table-body");
                     tableBody.innerHTML = "";  // Clear current table content
-
+        
                     response.data.forEach(row => {
                         const tableRow = `
                             <tr>
-                                <td>${row.part_number}</td>
-                                <td>${row.date}</td>
-                                <td>${row.time}</td>
-                                <td>${row.shift}</td>
-                                <td>${row.st1_result}</td>
-                                <td>${row.st2_result}</td>
-                                <td>${row.st3_result}</td>
-                                <td>${row.st4_result}</td>
-                                <td>${row.st5_result}</td>
+                                <td>${row.part_number ?? ''}</td>
+                                <td>${row.date ?? ''}</td>
+                                <td>${row.time ?? ''}</td>
+                                <td>${row.shift ?? ''}</td>
+                                <td>${row.st1_result ?? ''}</td>
+                                <td>${row.st2_result ?? ''}</td>
+                                <td>${row.st3_result ?? ''}</td>
+                                <td>${row.st4_result ?? ''}</td>
+                                <td>${row.st5_result ?? ''}</td>
                             </tr>
                         `;
                         tableBody.innerHTML += tableRow;
@@ -179,9 +179,10 @@
                 }
             });
         }
+        
 
         // Fetch data every 5 seconds
-        setInterval(fetchTableData, 5000);
+        setInterval(fetchTableData, 2000);
 
         // Fetch data on page load
         document.addEventListener("DOMContentLoaded", fetchTableData);
