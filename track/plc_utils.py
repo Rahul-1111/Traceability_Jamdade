@@ -20,14 +20,14 @@ def get_current_shift():
         return 'Shift 3'
 
 # Modbus Connection Details
-PLC_HOST = "192.168.1.100"
+PLC_HOST = "192.168.1.20"
 PLC_PORT = 502
 
 # Define Station Registers
 REGISTERS = {
     "st1": {"qr": 5100, "result": 5150, "scan_trigger": 5152, "write_signal": 5154},
     "st2": {"qr": 5200, "result": 5250, "scan_trigger": 5252, "write_signal": 5254},
-    "st3": {"qr": 5300, "result": 5350, "scan_trigger": 5352, "write_signal": 5354},
+    "st3": {"qr": 5300, "result": 5354, "scan_trigger": 5356, "write_signal": 5358},
     "st4": {"qr": 5400, "result": 5450, "scan_trigger": 5452, "write_signal": 5454},
     "st5": {"qr": 5500, "result": 5550, "scan_trigger": 5552, "write_signal": 5554},
 }
@@ -98,6 +98,7 @@ def fetch_station_data(client):
 
             logger.info(f"🔹 {station}: QR Data: {qr_string} | Raw Result Register: {result_value}")
 
+            # ✅ Result Mapping
             result_status = "OK" if result_value == 1 else "NOT OK"
 
             station_data[station] = {
@@ -124,7 +125,7 @@ def update_traceability_data():
                     if not part_number:
                         continue  
 
-                    result_value = station_data.get(station, {}).get("result", "UNKNOWN")
+                    result_value = station_data.get(station, {}).get("result", "NOT OK")
                     logger.info(f"📝 Checking {station}: Part {part_number} → Result {result_value}")
 
                     try:
@@ -134,25 +135,25 @@ def update_traceability_data():
                             defaults={"time": datetime.now().time(), "shift": get_current_shift()},
                         )
 
-                        # Check if the part was already stored and if the result was "OK" or "NOT OK"
+                        # ✅ Check if part already exists
                         part_exists = TraceabilityData.objects.filter(part_number=part_number, date=datetime.today().date()).exists()
 
                         if part_exists:
                             last_status = getattr(obj, f"{station}_result", "UNKNOWN")
                             if last_status == "OK":
-                                trigger_value = 0  # ✅ Don't reprocess if already OK
+                                trigger_value = 2  # ✅ Already OK → Write 2
                             else:
-                                trigger_value = 1  # ✅ Reprocess if NOT OK
+                                trigger_value = 1  # ✅ Was NOT OK → Write 1
                         else:
-                            trigger_value = 1  # ✅ New part, process it
+                            trigger_value = 1  # ✅ New part → Write 1
 
-                        # ✅ Store the new result in the database
+                        # ✅ Store the result in the database
                         setattr(obj, f"{station}_result", result_value)
                         obj.save()
 
                         logger.info(f"{'✅ Created' if created else '🔄 Updated'} record for {obj.part_number}")
 
-                        # ✅ Send Signal to PLC: 1 if new/NOT OK, 0 if already OK
+                        # ✅ Send Signal to PLC
                         write_register(client, reg["write_signal"], trigger_value)
                         logger.info(f"✅ {station}: Feedback Sent (Register {reg['write_signal']} = {trigger_value})")
 
