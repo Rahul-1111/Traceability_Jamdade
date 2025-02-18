@@ -23,13 +23,16 @@ def get_current_shift():
 PLC_HOST = "192.168.1.20"
 PLC_PORT = 502
 
-# Define Station Registers
+# Define Station Registers for 8 Stations
 REGISTERS = {
-    "st1": {"qr": 5100, "result": 5150, "scan_trigger": 5152, "write_signal": 5154},
-    "st2": {"qr": 5200, "result": 5250, "scan_trigger": 5252, "write_signal": 5254},
+    "st1": {"qr": 5100, "result": 5154, "scan_trigger": 5156, "write_signal": 5158},
+    "st2": {"qr": 5200, "result": 5254, "scan_trigger": 5256, "write_signal": 5258},
     "st3": {"qr": 5300, "result": 5354, "scan_trigger": 5356, "write_signal": 5358},
-    "st4": {"qr": 5400, "result": 5450, "scan_trigger": 5452, "write_signal": 5454},
-    "st5": {"qr": 5500, "result": 5550, "scan_trigger": 5552, "write_signal": 5554},
+    "st4": {"qr": 5400, "result": 5454, "scan_trigger": 5456, "write_signal": 5458},
+    "st5": {"qr": 5500, "result": 5554, "scan_trigger": 5556, "write_signal": 5558},
+    "st6": {"qr": 5600, "result": 5654, "scan_trigger": 5656, "write_signal": 5658},
+    "st7": {"qr": 5700, "result": 5754, "scan_trigger": 5756, "write_signal": 5758},
+    "st8": {"qr": 5800, "result": 5854, "scan_trigger": 5856, "write_signal": 5858},
 }
 
 def connect_to_modbus_client():
@@ -40,8 +43,8 @@ def connect_to_modbus_client():
             logger.info("✅ Successfully connected to Modbus server.")
             return client
         else:
-            logger.warning("🔴 Modbus connection failed. Retrying in 5 seconds...")
-            time.sleep(5)
+            logger.warning("🔴 Modbus connection failed. Retrying in 2 seconds...")
+            time.sleep(2)
 
 def read_register(client, address, num_registers=1):
     try:
@@ -98,7 +101,6 @@ def fetch_station_data(client):
 
             logger.info(f"🔹 {station}: QR Data: {qr_string} | Raw Result Register: {result_value}")
 
-            # ✅ Result Mapping
             result_status = "OK" if result_value == 1 else "NOT OK"
 
             station_data[station] = {
@@ -135,7 +137,6 @@ def update_traceability_data():
                             defaults={"time": datetime.now().time(), "shift": get_current_shift()},
                         )
 
-                        # ✅ Check if part already exists
                         part_exists = TraceabilityData.objects.filter(part_number=part_number, date=datetime.today().date()).exists()
 
                         if part_exists:
@@ -147,7 +148,6 @@ def update_traceability_data():
                         else:
                             trigger_value = 1  # ✅ New part → Write 1
 
-                        # ✅ Store the result in the database
                         setattr(obj, f"{station}_result", result_value)
                         obj.save()
 
@@ -164,8 +164,8 @@ def update_traceability_data():
 
         except Exception as e:
             logger.error(f"🚨 Critical error in traceability update: {e}")
-            logger.warning("🔄 Reconnecting to Modbus server in 5 seconds...")
-            time.sleep(5)
+            logger.warning("🔄 Reconnecting to Modbus server in 2 seconds...")
+            time.sleep(2)
 
         finally:
             client.close()
