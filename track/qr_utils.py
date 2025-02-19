@@ -8,15 +8,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = r"D:\Shubham\Fourfront\Traceability_python\traceability\qrcodes"
-
 lot_serial_tracker = {}
 
 def generate_zpl_qrcode(data):
+    """Generates ZPL code for printing a QR code on a Zebra printer."""
     zpl = f"""
     ^XA
-    ^PW160  ; Wider label width (was 160)
-    ^LL100  ; Taller label height (was 100)
-    ^FT30,120^BQN,2,3  ; Larger QR size (was 2,3)
+    ^PW160
+    ^LL100
+    ^FT30,120^BQN,2,3
     ^FH\\^FDLA,{data}^FS
     ^PQ1,0,1,Y
     ^XZ
@@ -24,6 +24,7 @@ def generate_zpl_qrcode(data):
     return zpl
 
 def print_zpl(zpl_command):
+    """Sends ZPL command to the Zebra printer."""
     try:
         z = Zebra()
         z.setqueue("ZDesigner GC420t (copy 1)")  
@@ -33,14 +34,15 @@ def print_zpl(zpl_command):
         logger.error(f"❌ Error sending ZPL to printer: {e}")
 
 def generate_qrcode_image(data, filename="qrcode.png"):
-    os.makedirs(OUTPUT_DIR, exist_ok=True)  
+    """Generates and saves a QR code image."""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     filepath = os.path.join(OUTPUT_DIR, filename)
 
     qr = qrcode.QRCode(
-        version=None,  
-        error_correction=qrcode.constants.ERROR_CORRECT_M,  
-        box_size=8,  # Increase QR size (was 5)
-        border=2,  # Reduce empty space (was 3)
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=2,
     )
     qr.add_data(data)
     qr.make(fit=True)
@@ -48,28 +50,26 @@ def generate_qrcode_image(data, filename="qrcode.png"):
     img.save(filepath)
     logger.info(f"🖼️ QR saved: {filepath}")
 
-def generate_qr_codes_batch(lot_number):
-    if lot_number not in lot_serial_tracker:
-        lot_serial_tracker[lot_number] = 1  
+def generate_qr_code(serial_number):
+    """Generates QR codes in the ddmmyyhhmm12345 format."""
+    
+    now = datetime.datetime.now()
+    date_part = now.strftime("%d%m%y")  # ddmmyy
+    time_part = now.strftime("%H%M")  # hhmm
+    unique_serial = str(serial_number).zfill(5)  # Ensure 5-digit format
 
-    serial_number = lot_serial_tracker[lot_number]
-
-    if serial_number > lot_number:
-        logger.info(f"✅ Lot {lot_number} completed. Resetting...")
-        del lot_serial_tracker[lot_number]
-        return f"✅ Lot {lot_number} completed. Enter a new lot number."
-
-    current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-    current_time = datetime.datetime.now().strftime("%H:%M:%S")
-
-    qr_data = f"{serial_number},{lot_number},{current_date},{current_time}"
-
+    qr_data = f"{date_part}{time_part}{unique_serial}"
+    
     zpl_qrcode = generate_zpl_qrcode(qr_data)
     print_zpl(zpl_qrcode)
 
-    generate_qrcode_image(qr_data, f"qrcode_{serial_number}.png")
+    generate_qrcode_image(qr_data, f"qrcode_{unique_serial}.png")
 
-    logger.info(f"🖨️ Printed QR: SN {serial_number}, Lot {lot_number}")
+    logger.info(f"🖨️ Printed QR: {qr_data}")
 
-    lot_serial_tracker[lot_number] += 1
-    return f"✅ QR Code for SN {serial_number} in Lot {lot_number} printed!"
+    return f"✅ QR Code Generated: {qr_data}"
+
+# Example usage:
+if __name__ == "__main__":
+    serial_number = 12345  # Example unique serial number
+    print(generate_qr_code(serial_number))

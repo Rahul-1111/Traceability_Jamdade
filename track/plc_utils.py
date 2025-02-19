@@ -20,7 +20,7 @@ def get_current_shift():
         return 'Shift 3'
 
 # Modbus Connection Details
-PLC_HOST = "192.168.1.20"
+PLC_HOST = "192.168.1.100"
 PLC_PORT = 502
 
 # Define Station Registers for 8 Stations
@@ -43,8 +43,8 @@ def connect_to_modbus_client():
             logger.info("✅ Successfully connected to Modbus server.")
             return client
         else:
-            logger.warning("🔴 Modbus connection failed. Retrying in 2 seconds...")
-            time.sleep(2)
+            logger.warning("🔴 Modbus connection failed. Retrying in 5 seconds...")
+            time.sleep(5)
 
 def read_register(client, address, num_registers=1):
     try:
@@ -137,23 +137,30 @@ def update_traceability_data():
                             defaults={"time": datetime.now().time(), "shift": get_current_shift()},
                         )
 
+                        # Check if the part already exists
                         part_exists = TraceabilityData.objects.filter(part_number=part_number, date=datetime.today().date()).exists()
 
+                        # If the part exists and the result was previously OK, send the OK signal to PLC and skip the database update
                         if part_exists:
                             last_status = getattr(obj, f"{station}_result", "UNKNOWN")
                             if last_status == "OK":
-                                trigger_value = 2  # ✅ Already OK → Write 2
+                                # If result was already OK, send "OK" signal to PLC and skip updating the database
+                                write_register(client, reg["write_signal"], 2)  # OK signal to PLC
+                                logger.info(f"✅ {station}: Result already OK, sending OK signal to PLC")
+                                continue  # Skip updating the database for this part
                             else:
-                                trigger_value = 1  # ✅ Was NOT OK → Write 1
+                                # If result was NOT OK, update the database and send feedback to PLC
+                                trigger_value = 1  # Was NOT OK → Write 1
                         else:
-                            trigger_value = 1  # ✅ New part → Write 1
+                            trigger_value = 1  # New part → Write 1
 
+                        # Store the result in the database
                         setattr(obj, f"{station}_result", result_value)
                         obj.save()
 
                         logger.info(f"{'✅ Created' if created else '🔄 Updated'} record for {obj.part_number}")
 
-                        # ✅ Send Signal to PLC
+                        # ✅ Send the appropriate signal to PLC
                         write_register(client, reg["write_signal"], trigger_value)
                         logger.info(f"✅ {station}: Feedback Sent (Register {reg['write_signal']} = {trigger_value})")
 
@@ -164,8 +171,8 @@ def update_traceability_data():
 
         except Exception as e:
             logger.error(f"🚨 Critical error in traceability update: {e}")
-            logger.warning("🔄 Reconnecting to Modbus server in 2 seconds...")
-            time.sleep(2)
+            logger.warning("🔄 Reconnecting to Modbus server in 5 seconds...")
+            time.sleep(5)
 
         finally:
             client.close()

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        /* General styles */
+        /* General Styles */
         body {
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
@@ -34,7 +34,7 @@
             color: #333;
         }
 
-        /* Styling for the sections */
+        /* Section Styles */
         .section {
             border: 2px solid #007BFF;
             border-radius: 8px;
@@ -43,11 +43,7 @@
             background-color: #ffffff;
         }
 
-        /* Styling for the QR form */
-        .qr-form {
-            margin-bottom: 20px;
-        }
-
+        /* Form Styles */
         .form-label {
             display: block;
             font-weight: bold;
@@ -75,7 +71,7 @@
             background-color: #0056b3;
         }
 
-        /* Styling for the table */
+        /* Table Styles */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -111,9 +107,9 @@
             <h1>QR Code Generator</h1>
             <form id="qr-form" method="post" action="{% url 'generate_qr_codes' %}">
                 {% csrf_token %}
-                <label for="lot_number">Enter Lot Number:</label>
-                <input type="number" id="lot_number" name="lot_number" required>
-                <button type="submit" class="form-button">Generate QR Codes</button>
+                <label for="serial_number">Enter Serial Number:</label>
+                <input type="number" id="serial_number" name="serial_number" required>
+                <button type="submit" class="form-button">Generate QR Code</button>
             </form>
             <div id="qr-response"></div>
         </div>
@@ -180,7 +176,7 @@
             });
         }
 
-        // Fetch data every 5 seconds
+        // Fetch data every 2 seconds
         setInterval(fetchTableData, 2000);
 
         // Fetch data on page load
@@ -195,12 +191,10 @@
                 data: $(this).serialize(),
                 success: function(response) {
                     $("#qr-response").html(`<p style="color:green;">${response.message}</p>`);
-    
-                    // If lot is completed, reset input field and prompt for a new lot
-                    if (response.message.includes("completed")) {
-                        $("#lot_number").val("");  // Clear input field
-                        $("#lot_number").focus();  // Focus on input field for new entry
-                    }
+
+                    // Reset input on completion
+                    $("#serial_number").val("");
+                    $("#serial_number").focus();
                 },
                 error: function(xhr, status, error) {
                     console.error("Failed to generate QR codes:", error);
