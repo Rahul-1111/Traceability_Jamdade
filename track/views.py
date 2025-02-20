@@ -5,8 +5,23 @@ import logging
 from .qr_utils import generate_qr_code  # ✅ Using latest QR code function
 import random
 import datetime
+from pymodbus.client import ModbusTcpClient
 
 logger = logging.getLogger(__name__)
+
+PLC_HOST = "192.168.1.100"
+PLC_PORT = 502
+
+def plc_status(request):
+    """Checks if the PLC is connected."""
+    client = ModbusTcpClient(PLC_HOST, port=PLC_PORT, timeout=5)  # Short timeout
+    is_connected = client.connect()  # ✅ Check connection
+    client.close()  # Close after checking
+
+    if is_connected:
+        return JsonResponse({"status": "connected"})  # 🟢 PLC Connected
+    else:
+        return JsonResponse({"status": "disconnected"})  # 🔴 PLC Disconnected
 
 # ✅ Render the main page
 def combined_page(request):
