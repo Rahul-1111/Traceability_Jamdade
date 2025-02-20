@@ -13,4 +13,8 @@ class TraceabilityDataAdmin(admin.ModelAdmin):
     ordering = ('date',)
     list_per_page = 25
 
+admin.site.site_header = "Traceability Management System"
+admin.site.site_title = "Traceability Admin Panel"
+admin.site.index_title = "Welcome to the Traceability Dashboard"
+
 admin.site.register(TraceabilityData, TraceabilityDataAdmin)
