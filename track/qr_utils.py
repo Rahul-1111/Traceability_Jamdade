@@ -1,4 +1,4 @@
-from zebra import Zebra 
+from zebra import Zebra
 import qrcode
 import datetime
 import logging
@@ -8,9 +8,26 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Directory to save QR Code images
-OUTPUT_DIR = r"D:\Shubham\Jamdade_Traceability\Traceability_Jamdade"
+# ✅ Get Current Project Directory (Django `BASE_DIR`)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Get current script's directory
+OUTPUT_DIR = os.path.join(BASE_DIR, "Qr")  # ✅ Save in "Qr" folder inside project
+
+# ✅ Create directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+def clear_old_qr_codes():
+    """Deletes QR codes older than 2 days."""
+    today_str = datetime.datetime.now().strftime("%d%m%y")       # Format: DDMMYY
+    yesterday_str = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%d%m%y")  # Keep Yesterday's QR too
+
+    for filename in os.listdir(OUTPUT_DIR):
+        if today_str not in filename and yesterday_str not in filename:  # ✅ Delete files older than 2 days
+            file_path = os.path.join(OUTPUT_DIR, filename)
+            try:
+                os.remove(file_path)
+                logger.info(f"🗑️ Deleted old QR: {filename}")
+            except Exception as e:
+                logger.error(f"❌ Error deleting file {filename}: {e}")
 
 def generate_zpl_qrcode(qr_data):
     """Generates ZPL code for printing a QR code on a Zebra printer."""
@@ -55,7 +72,9 @@ def generate_qrcode_image(qr_data):
 
 def generate_qr_code(prefix, serial_number):
     """Generates QR Code with format: [PREFIX]-DDMMYY-[SERIAL]"""
-    
+
+    clear_old_qr_codes()  # ✅ Delete old QR codes before generating a new one
+
     now = datetime.datetime.now()
     date_part = now.strftime("%d%m%y")  # ddmmyy (last two digits of year)
     unique_serial = str(serial_number).zfill(5)  # Ensure 5-digit serial number

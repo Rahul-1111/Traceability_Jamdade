@@ -35,12 +35,12 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "Traceability_Jamdade.urls"
+ROOT_URLCONF = "Traceability.urls"
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": ['D:/Shubham/Jamdade_Traceability/Traceability_Jamdade/track/templates'],
+        "DIRS": ['D:/Shubham/Jamdade_Traceability/Traceability/track/templates'],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -53,7 +53,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "Traceability_Jamdade.wsgi.application"
+WSGI_APPLICATION = "Traceability.wsgi.application"
 
 # Database Configuration
 DATABASES = {
