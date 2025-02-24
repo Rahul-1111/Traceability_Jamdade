@@ -6,20 +6,70 @@ from .qr_utils import generate_qr_code  # ✅ Using latest QR code function
 import random
 import datetime
 from pymodbus.client import ModbusTcpClient
-# from .plc_utils import PLC_HOST, PLC_PORT
+import time
+import threading
+from .plc_utils import PLC_MAPPING 
 
 logger = logging.getLogger(__name__)
+# Shared dictionary for storing PLC statuses
+plc_statuses = {}
 
-# def plc_status(request):
-#     """Checks if the PLC is connected."""
-#     client = ModbusTcpClient(PLC_HOST, port=PLC_PORT, timeout=5)  # Short timeout
-#     is_connected = client.connect()  # ✅ Check connection
-#     client.close()  # Close after checking
+def monitor_plcs():
+    """Continuously monitor PLC connections in a background thread."""
+    global plc_statuses
+    while True:
+        temp_statuses = {}
+        for station, plc in PLC_MAPPING.items():
+            plc_ip = plc.get("ip")
+            if not plc_ip:
+                continue  # Skip if no IP
 
-#     if is_connected:
-#         return JsonResponse({"status": "connected"})  # 🟢 PLC Connected
-#     else:
-#         return JsonResponse({"status": "disconnected"})  # 🔴 PLC Disconnected
+            client = ModbusTcpClient(plc_ip, port=5007, timeout=1)
+            is_connected = client.connect()
+            client.close()
+
+            temp_statuses[station] = "connected" if is_connected else "disconnected"
+
+        plc_statuses = temp_statuses  # Update shared status dictionary
+        time.sleep(1)  # Retry every 2 seconds
+
+# Start the monitoring thread once
+plc_monitor_thread = threading.Thread(target=monitor_plcs, daemon=True)
+plc_monitor_thread.start()
+
+def plc_status(request):
+    """Return PLC statuses with combined stations for shared PLCs."""
+    plc_statuses = {}
+
+    for station, plc in PLC_MAPPING.items():
+        plc_ip = plc.get("ip")  
+        if not plc_ip:
+            continue  # Skip stations with missing IPs
+
+        client = ModbusTcpClient(plc_ip, port=5007, timeout=1)
+        is_connected = client.connect()
+        client.close()
+
+        plc_statuses[station] = "connected" if is_connected else "disconnected"
+
+    # Combine shared PLCs
+    combined_statuses = {
+        "St 1": plc_statuses.get("st1", "disconnected"),
+        "St 2": plc_statuses.get("st2", "disconnected"),
+        "St 3 & 4": plc_statuses.get("st3", "disconnected"),  # Shared PLC for St3 & St4
+        "St 5 & 6": plc_statuses.get("st5", "disconnected"),  # Shared PLC for St5 & St6
+        "St 7 & 8": plc_statuses.get("st7", "disconnected"),  # Shared PLC for St7 & St8
+    }
+
+    # Count connected and disconnected PLCs
+    connected_count = sum(1 for status in combined_statuses.values() if status == "connected")
+    disconnected_count = sum(1 for status in combined_statuses.values() if status == "disconnected")
+
+    return JsonResponse({
+        "plc_statuses": combined_statuses,
+        "connected_count": connected_count,
+        "disconnected_count": disconnected_count
+    })
 
 # ✅ Render the main page
 def combined_page(request):

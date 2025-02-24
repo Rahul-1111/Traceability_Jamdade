@@ -103,15 +103,24 @@
             font-weight: bold;
             padding: 10px 15px;
             color: white;
-            background-color:rgb(242, 242, 242); /* Dark background for better visibility */
+            background-color:rgb(252, 253, 254); /* Dark background for better visibility */
             border-radius: 5px;
             position: absolute;
-            top: 20px;  /* Distance from the top */
+            top: 10px;  /* Distance from the top */
             right: 20px; /* Distance from the right */
             text-align: center;
             box-shadow: 2px 2px 8px rgba(111, 224, 224, 0.25);
         }
         
+        .connected {
+            color: green;
+            font-weight: bold;
+        }
+        
+        .disconnected {
+            color: red;
+            font-weight: bold;
+        }        
 
     </style>
 </head>
@@ -119,7 +128,7 @@
     <!-- Header Section -->
     <header>
         <h1>TRACEABILITY</h1>
-        <div id="plc-status" class="plc-status">🔴 PLC Disconnected</div>
+        <div id="plc-status" class="plc-status">🔴 Checking PLC Status...</div>
     </header>
 
     <a href="http://127.0.0.1:8000/admin/track/traceabilitydata/" class="database-btn">
@@ -254,26 +263,40 @@
             });
         });
 
-        function checkPLCStatus() {
+        function checkAllPLCStatus() {
             $.ajax({
-                url: "{% url 'plc_status' %}",  // API to check PLC connection
+                url: "{% url 'plc_statuses' %}",
                 method: "GET",
-                timeout: 3000,  // ✅ Short timeout to detect errors quickly
                 success: function(response) {
-                    if (response.status === "connected") {
-                        $("#plc-status").html("🟢 PLC Connected").css("color", "green");
-                    } else {
-                        $("#plc-status").html("🔴 PLC Disconnected").css("color", "red");
-                    }
+                    let statusHTML = "";
+                    let connectedCount = response.connected_count;
+                    let disconnectedCount = response.disconnected_count;
+        
+                    // Iterate over the combined PLC statuses
+                    Object.keys(response.plc_statuses).forEach(station => {
+                        let status = response.plc_statuses[station];
+                        let statusText = status === "connected" ? "🟢 Connected" : "🔴 Disconnected";
+                        let colorStyle = status === "connected" ? "color: green;" : "color: red;";
+                        statusHTML += `<p style="${colorStyle}">${station}: ${statusText}</p>`;
+                    });
+        
+                    // Update the PLC status section
+                    $("#plc-status").html(`
+                        
+                        ${statusHTML}
+                        
+                    `);
                 },
                 error: function() {
-                    $("#plc-status").html("🔴 PLC Disconnected").css("color", "red");
+                    $("#plc-status").html("<p class='disconnected'>🔴 Error fetching PLC status</p>");
                 }
             });
         }
-    
-        setInterval(checkPLCStatus, 2000);  // ✅ Check every 2 seconds
-
+        
+        // Refresh PLC status every 2 seconds
+        setInterval(checkAllPLCStatus, 500);
+        $(document).ready(checkAllPLCStatus);        
+        
     </script>
 </body>
 </html>

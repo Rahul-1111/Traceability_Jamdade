@@ -102,7 +102,6 @@ def update_traceability_data():
         station_data = fetch_station_data()
         for station, data in station_data.items():
             part_number = data["qr"].strip()
-            result_value = data["result"]
             plc = PLC_MAPPING[station]
             reg = REGISTERS[station]
 
@@ -110,6 +109,7 @@ def update_traceability_data():
             if not mc:
                 continue
             
+            # Fetch existing traceability record
             obj, created = TraceabilityData.objects.get_or_create(
                 part_number=part_number,
                 date=datetime.today().date(),
@@ -117,22 +117,32 @@ def update_traceability_data():
             )
             
             last_status = getattr(obj, f"{station}_result", None)
-            write_signal = 4 if result_value == "OK" else 1
             
             if last_status == "OK":
-                write_signal = 2
-            elif last_status == "NOT OK" and result_value == "OK":
-                write_signal = 4
-            else:
-                write_signal = 1
+                logger.info(f"✅ {station}: Part {part_number} is already OK. Sending signal directly.")
+                write_register(mc, reg["write_signal"], 2)  # Directly send signal
+                mc.close()
+                continue  # Skip reading result
             
+            # Read result only if not already OK
+            result = read_register(mc, reg["result"], 1)
+            result_value = "OK" if result and result[0] == 1 else "NOT OK"
+
+            # Determine signal
+            if result_value == "OK":
+                write_signal = 4 if last_status != "OK" else 2
+            else:
+                write_signal = 1  # Not OK
+
+            # Save new result
             setattr(obj, f"{station}_result", result_value)
             obj.save()
-            
+
+            # Write signal to PLC
             write_register(mc, reg["write_signal"], write_signal)
             if write_signal == 4:
                 write_register(mc, reg["scan_trigger"], 0)
-            
+
             mc.close()
         time.sleep(2)
 
