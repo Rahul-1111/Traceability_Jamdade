@@ -5,6 +5,7 @@ import logging
 from track.models import TraceabilityData
 from datetime import datetime
 import struct
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +21,7 @@ def get_current_shift():
         return 'Shift 3'
 
 # Modbus Connection Details
-PLC_HOST = "192.168.1.100"
+PLC_HOST = "192.168.1.130"
 PLC_PORT = 502
 
 # Define Station Registers for 8 Stations
@@ -77,6 +78,17 @@ def convert_registers_to_string(registers):
         logger.error(f"❌ Error converting register data to string: {e}")
         return ""
 
+import re  # ✅ Use regex for format validation
+
+# Define the valid QR format pattern (Example: "PDU-S-10594-1-21022513746")
+QR_PATTERN = re.compile(r"^[A-Z]+-S-\d+-\d+-\d{11}$")  
+
+# ✅ First 10 valid QR prefixes
+VALID_QR_PREFIXES = {
+    "PDU-S-10594-1", "PDB-S-10779-1", "PDB-S-10697-1"
+    # ✅ Add more as needed...
+}
+
 def fetch_station_data(client):
     station_data = {}
 
@@ -96,11 +108,35 @@ def fetch_station_data(client):
                 logger.error(f"❌ Failed to fetch data for {station}")
                 continue
 
-            qr_string = convert_registers_to_string(qr_registers)
+            qr_string = convert_registers_to_string(qr_registers).strip()
+
+            # ✅ Log the scanned QR for debugging
+            logger.info(f"🔹 {station}: Scanned QR Data: '{qr_string}'")
+
             result_value = result[0] if result else -1
 
-            logger.info(f"🔹 {station}: QR Data: {qr_string} | Raw Result Register: {result_value}")
+            # ✅ Step 1: Check QR format
+            if not QR_PATTERN.match(qr_string):
+                logger.warning(f"🚫 {station}: Invalid QR format - '{qr_string}'. Ignoring...")
+                continue  # Skip processing
 
+            logger.info(f"✅ {station}: QR format valid")
+
+            # ✅ Step 2: Check if QR exists in the database
+            qr_exists = TraceabilityData.objects.filter(part_number=qr_string).exists()
+
+            # ✅ Step 3: Allow first 10 valid QR prefixes
+            qr_prefix = "-".join(qr_string.split("-")[:4])  # Extract "PDU-S-10594-1"
+            if not qr_exists and qr_prefix not in VALID_QR_PREFIXES:
+                logger.warning(f"🚨 {station}: Unknown QR Code ({qr_string}) scanned! Ignoring...")
+
+                # 🔍 Debugging: Log all existing QRs for comparison
+                all_qrs = list(TraceabilityData.objects.values_list('part_number', flat=True))
+                logger.warning(f"🧐 Debug: Existing QRs in DB → {all_qrs[:10]}... (Showing first 10)")
+
+                continue  # Skip processing
+
+            # Convert result to readable status
             result_status = "OK" if result_value == 1 else "NOT OK"
 
             station_data[station] = {
@@ -112,6 +148,12 @@ def fetch_station_data(client):
             logger.error(f"❌ Error fetching data for {station}: {e}")
 
     return station_data
+
+from datetime import datetime, timedelta
+
+# Track when parts were scanned
+last_scan_times = {}
+first_scan_done = {}
 
 def update_traceability_data():
     while True:
@@ -125,44 +167,55 @@ def update_traceability_data():
                 for station, reg in REGISTERS.items():
                     part_number = station_data.get(station, {}).get("qr", "").strip()
                     if not part_number:
-                        continue  
+                        continue  # Skip if no QR was read
 
                     result_value = station_data.get(station, {}).get("result", "NOT OK")
                     logger.info(f"📝 Checking {station}: Part {part_number} → Result {result_value}")
 
+                    now = datetime.now()
+
                     try:
+                        # 🔍 Step 1: Check database
                         obj, created = TraceabilityData.objects.get_or_create(
                             part_number=part_number,
                             date=datetime.today().date(),
-                            defaults={"time": datetime.now().time(), "shift": get_current_shift()},
+                            defaults={"time": now.time(), "shift": get_current_shift()},
                         )
 
-                        # Check if the part already exists
-                        part_exists = TraceabilityData.objects.filter(part_number=part_number, date=datetime.today().date()).exists()
+                        last_status = getattr(obj, f"{station}_result", None)
+                        last_scan_time = last_scan_times.get(part_number)
 
-                        # If the part exists and the result was previously OK, send the OK signal to PLC and skip the database update
-                        if part_exists:
-                            last_status = getattr(obj, f"{station}_result", "UNKNOWN")
-                            if last_status == "OK":
-                                # If result was already OK, send "OK" signal to PLC and skip updating the database
-                                write_register(client, reg["write_signal"], 2)  # OK signal to PLC
-                                logger.info(f"✅ {station}: Result already OK, sending OK signal to PLC")
-                                continue  # Skip updating the database for this part
+                        # 🚫 Prevent sending `2` immediately after `4`
+                        recently_scanned = last_scan_time and (now - last_scan_time) < timedelta(seconds=5)
+
+                        # 🚀 Determine PLC Signal:
+                        if created:
+                            if result_value == "OK":
+                                write_signal = 4  # First scan & OK
                             else:
-                                # If result was NOT OK, update the database and send feedback to PLC
-                                trigger_value = 1  # Was NOT OK → Write 1
+                                write_signal = 1  # First scan & NOT OK
+                            first_scan_done[part_number] = True  # Mark first scan
+                        elif last_status == "OK" and not first_scan_done.get(part_number) and not recently_scanned:
+                            write_signal = 2  # Already OK, send 2
+                        elif last_status == "NOT OK" and result_value == "OK":
+                            write_signal = 4  # Was NOT OK before, now OK
                         else:
-                            trigger_value = 1  # New part → Write 1
+                            write_signal = 1  # Remains NOT OK
 
-                        # Store the result in the database
+                        # 🔄 Step 3: Update database **before sending signal**
                         setattr(obj, f"{station}_result", result_value)
                         obj.save()
+                        last_scan_times[part_number] = now  # Store scan time
 
-                        logger.info(f"{'✅ Created' if created else '🔄 Updated'} record for {obj.part_number}")
+                        # ✅ Step 4: Write to PLC
+                        write_register(client, reg["write_signal"], write_signal)
+                        logger.info(f"✅ {station}: Sent {write_signal} to PLC")
 
-                        # ✅ Send the appropriate signal to PLC
-                        write_register(client, reg["write_signal"], trigger_value)
-                        logger.info(f"✅ {station}: Feedback Sent (Register {reg['write_signal']} = {trigger_value})")
+                        # 🔄 Step 5: After writing 4, reset scan trigger to 0
+                        if write_signal == 4:
+                            write_register(client, reg["scan_trigger"], 0)
+                            logger.info(f"🔄 {station}: Reset scan trigger (Sent 0 to {reg['scan_trigger']})")
+                            first_scan_done[part_number] = False
 
                     except Exception as e:
                         logger.error(f"❌ Error updating traceability data for {station}: {e}")
@@ -176,3 +229,4 @@ def update_traceability_data():
 
         finally:
             client.close()
+ 
