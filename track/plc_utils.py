@@ -128,13 +128,24 @@ def update_traceability_data():
                 defaults={"time": datetime.now().time(), "shift": get_current_shift()},
             )
 
+            # Get previous station (if applicable)
+            station_num = int(station[2])  # Extract station number (e.g., "st3" -> 3)
+            previous_station = f"st{station_num - 1}" if station_num > 1 else None
+            previous_status = getattr(obj, f"{previous_station}_result", None) if previous_station else None
+
+            if previous_status == "NOT OK":
+                # If the previous station was "NOT OK", block operation by sending 5
+                logger.warning(f"🚨 {station}: Previous station '{previous_station}' result was NOT OK. Blocking operation.")
+                write_register(mc, reg["write_signal"], 5)
+                mc.close()
+                continue
+
             # Check if this part already exists & has "OK" status in the database
             existing_ok = not created and getattr(obj, f"{station}_result", None) == "OK"
 
             if existing_ok:
                 # If part is already "OK", send "2" and do not update result
-                write_signal = 2
-                write_register(mc, reg["write_signal"], write_signal)
+                write_register(mc, reg["write_signal"], 2)
                 write_register(mc, reg["scan_trigger"], 0)  # Reset scan trigger after sending 2
                 logger.info(f"🟢 {station}: Part '{part_number}' is already OK. Sending 2.")
                 mc.close()
