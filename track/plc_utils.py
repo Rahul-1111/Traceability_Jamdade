@@ -133,9 +133,9 @@ def update_traceability_data():
             previous_station = f"st{station_num - 1}" if station_num > 1 else None
             previous_status = getattr(obj, f"{previous_station}_result", None) if previous_station else None
 
-            if previous_status == "NOT OK":
-                # If the previous station was "NOT OK", block operation by sending 5
-                logger.warning(f"🚨 {station}: Previous station '{previous_station}' result was NOT OK. Blocking operation.")
+            if previous_status in [None, "NOT OK"]:
+                # If the previous station result is "NOT OK" or missing (blank), block operation by sending 5
+                logger.warning(f"🚨 {station}: Previous station '{previous_station}' result is '{previous_status}'. Blocking operation.")
                 write_register(mc, reg["write_signal"], 5)
                 mc.close()
                 continue
