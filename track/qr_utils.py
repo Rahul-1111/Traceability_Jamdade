@@ -8,26 +8,42 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ✅ Get Current Project Directory (Django `BASE_DIR`)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Get current script's directory
-OUTPUT_DIR = os.path.join(BASE_DIR, "Qr")  # ✅ Save in "Qr" folder inside project
+# ✅ Get Current Project Directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  
+OUTPUT_DIR = os.path.join(BASE_DIR, "Qr")  # ✅ Save in "Qr" folder
+SERIAL_FILE = os.path.join(BASE_DIR, "serial_number.txt")  # ✅ Store last used serial
 
-# ✅ Create directory if it doesn't exist
+# ✅ Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def clear_old_qr_codes():
     """Deletes QR codes older than 2 days."""
-    today_str = datetime.datetime.now().strftime("%d%m%y")       # Format: DDMMYY
-    yesterday_str = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%d%m%y")  # Keep Yesterday's QR too
+    today_str = datetime.datetime.now().strftime("%d%m%y")
+    yesterday_str = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%d%m%y")
 
     for filename in os.listdir(OUTPUT_DIR):
-        if today_str not in filename and yesterday_str not in filename:  # ✅ Delete files older than 2 days
+        if today_str not in filename and yesterday_str not in filename:
             file_path = os.path.join(OUTPUT_DIR, filename)
             try:
                 os.remove(file_path)
                 logger.info(f"🗑️ Deleted old QR: {filename}")
             except Exception as e:
                 logger.error(f"❌ Error deleting file {filename}: {e}")
+
+def get_next_serial_number():
+    """Reads the last serial number from a file, increments it, and saves it back."""
+    if os.path.exists(SERIAL_FILE):
+        with open(SERIAL_FILE, "r") as file:
+            last_serial = int(file.read().strip())  # Read last used serial number
+    else:
+        last_serial = 0  # Start from 0 if file doesn't exist
+
+    new_serial = last_serial + 1
+
+    with open(SERIAL_FILE, "w") as file:
+        file.write(str(new_serial))  # Save new serial number
+
+    return str(new_serial).zfill(5)  # Ensure 5-digit serial number (e.g., 00001)
 
 def generate_zpl_qrcode(qr_data):
     """Generates ZPL code for printing a QR code on a Zebra printer."""
@@ -70,16 +86,16 @@ def generate_qrcode_image(qr_data):
     
     logger.info(f"🖼️ QR saved: {filepath}")
 
-def generate_qr_code(prefix, serial_number):
+def generate_qr_code(prefix, _serial_number=None):  # ✅ `_serial_number` is ignored
     """Generates QR Code with format: [PREFIX]-DDMMYY[SERIAL]"""
 
     clear_old_qr_codes()  # ✅ Delete old QR codes before generating a new one
 
     now = datetime.datetime.now()
     date_part = now.strftime("%d%m%y")  # ddmmyy (last two digits of year)
-    unique_serial = str(serial_number).zfill(5)  # Ensure 5-digit serial number
+    unique_serial = get_next_serial_number()  # ✅ Automatically get next serial
 
-    qr_data = f"{prefix}-{date_part}{unique_serial}"  # ✅ Removed time
+    qr_data = f"{prefix}-{date_part}{unique_serial}"  # ✅ Format: PREFIX-DDMMYY00001
 
     zpl_qrcode = generate_zpl_qrcode(qr_data)
     print_zpl(zpl_qrcode)
@@ -93,5 +109,5 @@ def generate_qr_code(prefix, serial_number):
 # Example usage:
 if __name__ == "__main__":
     sample_prefix = "PDU-S-10594-1"
-    sample_serial = 12345
+    sample_serial = 12345  # ✅ This is ignored, sequential numbers are used
     print(generate_qr_code(sample_prefix, sample_serial))
