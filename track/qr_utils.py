@@ -31,28 +31,28 @@ def clear_old_qr_codes():
                 logger.error(f"❌ Error deleting file {filename}: {e}")
 
 def get_next_serial_number():
-    """Reads the last serial number from a file, resets if a new day, and updates the file."""
-    today_date = datetime.datetime.now().strftime("%d%m%y")  # Format: DDMMYY
+    """Reads the last serial number from a file, resets if a new month, and updates the file."""
+    current_month = datetime.datetime.now().strftime("%m%y")  # Format: MMYY
 
     if os.path.exists(SERIAL_FILE):
         with open(SERIAL_FILE, "r") as file:
             try:
-                last_date, last_serial = file.read().strip().split(",")  # Read last date & serial
+                last_month, last_serial = file.read().strip().split(",")  # Read last month & serial
                 last_serial = int(last_serial)
             except ValueError:
-                last_date, last_serial = today_date, 0  # Reset if file is corrupted
+                last_month, last_serial = current_month, 0  # Reset if file is corrupted
     else:
-        last_date, last_serial = today_date, 0  # Start from 0 if file doesn't exist
+        last_month, last_serial = current_month, 0  # Start from 0 if file doesn't exist
 
-    # ✅ Reset if a new day has started
-    if last_date != today_date:
+    # ✅ Reset if a new month has started
+    if last_month != current_month:
         new_serial = 1
     else:
         new_serial = last_serial + 1
 
-    # ✅ Save the updated date and serial number
+    # ✅ Save the updated month and serial number
     with open(SERIAL_FILE, "w") as file:
-        file.write(f"{today_date},{new_serial}")
+        file.write(f"{current_month},{new_serial}")
 
     return str(new_serial).zfill(5)  # Ensure 5-digit serial number (e.g., 00001)
 
