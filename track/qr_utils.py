@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # ✅ Get Current Project Directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  
 OUTPUT_DIR = os.path.join(BASE_DIR, "Qr")  # ✅ Save in "Qr" folder
-SERIAL_FILE = os.path.join(BASE_DIR, "serial_number.txt")  # ✅ Store last used serial
+SERIAL_FILE = os.path.join(BASE_DIR, "serial_number.txt")  # ✅ Store last used serial & date
 
 # ✅ Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -31,17 +31,28 @@ def clear_old_qr_codes():
                 logger.error(f"❌ Error deleting file {filename}: {e}")
 
 def get_next_serial_number():
-    """Reads the last serial number from a file, increments it, and saves it back."""
+    """Reads the last serial number from a file, resets if a new day, and updates the file."""
+    today_date = datetime.datetime.now().strftime("%d%m%y")  # Format: DDMMYY
+
     if os.path.exists(SERIAL_FILE):
         with open(SERIAL_FILE, "r") as file:
-            last_serial = int(file.read().strip())  # Read last used serial number
+            try:
+                last_date, last_serial = file.read().strip().split(",")  # Read last date & serial
+                last_serial = int(last_serial)
+            except ValueError:
+                last_date, last_serial = today_date, 0  # Reset if file is corrupted
     else:
-        last_serial = 0  # Start from 0 if file doesn't exist
+        last_date, last_serial = today_date, 0  # Start from 0 if file doesn't exist
 
-    new_serial = last_serial + 1
+    # ✅ Reset if a new day has started
+    if last_date != today_date:
+        new_serial = 1
+    else:
+        new_serial = last_serial + 1
 
+    # ✅ Save the updated date and serial number
     with open(SERIAL_FILE, "w") as file:
-        file.write(str(new_serial))  # Save new serial number
+        file.write(f"{today_date},{new_serial}")
 
     return str(new_serial).zfill(5)  # Ensure 5-digit serial number (e.g., 00001)
 
