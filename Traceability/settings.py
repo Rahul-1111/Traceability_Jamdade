@@ -40,7 +40,7 @@ ROOT_URLCONF = "Traceability.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": ['D:/Shubham/Jamdade_Traceability/Traceability/track/templates'],
+        "DIRS": ['D:/Shubham/BAPL_Rototech/Traceability_BAPL/track/templates'],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
