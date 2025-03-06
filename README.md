@@ -15,4 +15,6 @@ python manage.py runserver
 
 # user login
 Data
-1@database 
+1@database  
+
+# W + R shell:startup
