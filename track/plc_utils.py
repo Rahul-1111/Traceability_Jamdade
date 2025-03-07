@@ -30,7 +30,7 @@ REGISTERS = {
     "st4": {"qr": 5400, "result": 5454, "scan_trigger": 5456, "write_signal": 5458},
     "st5": {"qr": 5500, "result": 5554, "scan_trigger": 5556, "write_signal": 5558},
     "st6": {"qr": 5600, "result": 5654, "scan_trigger": 5656, "write_signal": 5658},
-    "st7": {"qr": 5700, "result": 5754, "scan_trigger": 5756, "write_signal": 5758},
+    "st7": {"qr": 5700, "result": 5764, "scan_trigger": 5760, "write_signal": 5762},       # REPLACE 5756 TO 5760,5758 T0 5762, 5754 TO 5764
     "st8": {"qr": 5800, "result": 5854, "scan_trigger": 5856, "write_signal": 5858},
 }
 
