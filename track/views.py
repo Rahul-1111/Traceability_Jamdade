@@ -94,13 +94,14 @@ def generate_qr_code_view(request):
 
 def fetch_torque_data(request):
     if request.method == "GET":
-        data = TraceabilityData.objects.all()
+        # Retrieve the latest 10 records, ordered by date and time in descending order
+        data = TraceabilityData.objects.order_by('-date', '-time')[:10]
         
         formatted_data = [
             {
                 "part_number": item.part_number,
                 "date": item.date.strftime("%Y-%m-%d") if item.date else "",
-                "time": item.time.strftime("%H:%M:%S") if item.time else "",  # ✅ Time formatted to HHMMSS
+                "time": item.time.strftime("%H:%M:%S") if item.time else "",
                 "shift": item.shift,
                 "st1_result": item.st1_result,
                 "st2_result": item.st2_result,
@@ -114,5 +115,4 @@ def fetch_torque_data(request):
             for item in data
         ]
         
-        return JsonResponse({"data": formatted_data})  # ✅ JSON with formatted time
-
+        return JsonResponse({"data": formatted_data})
