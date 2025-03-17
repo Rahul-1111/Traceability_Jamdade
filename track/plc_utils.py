@@ -37,16 +37,20 @@ REGISTERS = {
 # QR Code validation pattern
 QR_PATTERN = re.compile(r"^[A-Z]+-S-\d+-\d+-\d{11}$")
 
-def connect_to_plc(plc_ip):
-    """Connect to PLC using pymcprotocol."""
-    mc = pymcprotocol.Type3E()
-    try:
-        mc.connect(plc_ip, 5007)  # Mitsubishi MELSEC default port
-        logger.info(f"✅ Connected to PLC {plc_ip}")
-        return mc
-    except Exception as e:
-        logger.error(f"❌ Failed to connect to PLC {plc_ip}: {e}")
-        return None
+import socket
+
+def connect_to_plc(plc_ip, timeout=3, retry_delay=5):
+    """Keep trying to connect to a PLC until it succeeds."""
+    while True:
+        mc = pymcprotocol.Type3E()
+        try:
+            socket.setdefaulttimeout(timeout)
+            mc.connect(plc_ip, 5007)
+            logger.info(f"✅ Connected to PLC {plc_ip}")
+            return mc
+        except Exception as e:
+            logger.error(f"❌ Connection failed to PLC {plc_ip}: {e}. Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
 
 def read_register(mc, address, num_registers=1):
     """Read registers from PLC."""

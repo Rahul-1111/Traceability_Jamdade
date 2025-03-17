@@ -2,7 +2,7 @@ from django.db import models
 
 class TraceabilityData(models.Model):
     sr_no = models.AutoField(primary_key=True)  # Serial Number (Primary Key)
-    part_number = models.CharField(max_length=100, unique=True)  # QR Code
+    part_number = models.CharField(max_length=100)  # QR Code                          remove -    , unique=True
     date = models.DateField()  # Date of entry
     time = models.TimeField()  # Time of entry
     shift = models.CharField(max_length=10, null=True, blank=True)  # Shift (e.g., A, B, C)
