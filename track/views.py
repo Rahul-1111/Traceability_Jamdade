@@ -92,11 +92,37 @@ def generate_qr_code_view(request):
             logger.error(f"Unexpected error: {e}", exc_info=True)
             return JsonResponse({"error": str(e)}, status=500)
 
+from datetime import date
+from django.db.models import Q
+
 def fetch_torque_data(request):
     if request.method == "GET":
-        # Retrieve the latest 10 records, ordered by date and time in descending order
-        data = TraceabilityData.objects.order_by('-date', '-time')[:10]
+        today = date.today()  # Get today's date
         
+        # Filter for today's records
+        today_records = TraceabilityData.objects.filter(date=today)
+
+        # Filter for "NOT OK" or NULL/blank records (without date restriction)
+        not_ok_or_null_records = TraceabilityData.objects.filter(
+            Q(st1_result="NOT OK") | Q(st2_result="NOT OK") |
+            Q(st3_result="NOT OK") | Q(st4_result="NOT OK") |
+            Q(st5_result="NOT OK") | Q(st6_result="NOT OK") |
+            Q(st7_result="NOT OK") | Q(st8_result="NOT OK") |
+            Q(st1_result__isnull=True) | Q(st2_result__isnull=True) |
+            Q(st3_result__isnull=True) | Q(st4_result__isnull=True) |
+            Q(st5_result__isnull=True) | Q(st6_result__isnull=True) |
+            Q(st7_result__isnull=True) | Q(st8_result__isnull=True) |
+            Q(st1_result="") | Q(st2_result="") | Q(st3_result="") |
+            Q(st4_result="") | Q(st5_result="") | Q(st6_result="") |
+            Q(st7_result="") | Q(st8_result="")
+        )
+
+        # Retrieve the latest 10 records, ordered by date and time in descending order
+        latest_records = TraceabilityData.objects.order_by('-date', '-time')[:10]
+
+        # Combine all querysets and remove duplicates
+        combined_data = (today_records | not_ok_or_null_records | latest_records).distinct().order_by('-date', '-time')
+
         formatted_data = [
             {
                 "part_number": item.part_number,
@@ -112,7 +138,7 @@ def fetch_torque_data(request):
                 "st7_result": item.st7_result,
                 "st8_result": item.st8_result,
             }
-            for item in data
+            for item in combined_data
         ]
         
         return JsonResponse({"data": formatted_data})
