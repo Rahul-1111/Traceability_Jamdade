@@ -126,11 +126,18 @@ def update_traceability_data():
                 continue
 
             # Fetch part from database
-            obj, created = TraceabilityData.objects.get_or_create(
-                part_number=part_number,
-                date=datetime.today().date(),
-                defaults={"time": datetime.now().time(), "shift": get_current_shift()},
-            )
+            obj = TraceabilityData.objects.filter(part_number=part_number).first()
+ 
+            if obj:
+                 logger.info(f"🟡 Updating existing record for part: {part_number}")
+            else:
+                 obj = TraceabilityData.objects.create(
+                     part_number=part_number,
+                     date=datetime.today().date(),
+                     time=datetime.now().time(),
+                     shift=get_current_shift()
+                 )
+                 logger.info(f"🟢 Created new record for part: {part_number}")
 
             # Get previous station (if applicable)
             station_num = int(station[2])  # Extract station number (e.g., "st3" -> 3)
@@ -145,7 +152,7 @@ def update_traceability_data():
                 continue
 
             # Check if this part already exists & has "OK" status in the database
-            existing_ok = not created and getattr(obj, f"{station}_result", None) == "OK"
+            existing_ok = getattr(obj, f"{station}_result", None) == "OK"
 
             if existing_ok:
                 # If part is already "OK", send "2" and do not update result
