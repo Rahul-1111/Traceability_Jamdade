@@ -4,3 +4,4 @@ zebra==0.1.0
 qrcode==7.4.2
 daphne==4.1.2
 whitenoise==6.9.0
+django-filter==25.3

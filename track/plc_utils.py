@@ -5,6 +5,8 @@ from track.models import TraceabilityData
 from datetime import datetime
 import struct
 import re
+import threading
+import socket
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,17 +32,14 @@ REGISTERS = {
     "st4": {"qr": 5400, "result": 5454, "scan_trigger": 5456, "write_signal": 5458},
     "st5": {"qr": 5500, "result": 5554, "scan_trigger": 5556, "write_signal": 5558},
     "st6": {"qr": 5600, "result": 5654, "scan_trigger": 5656, "write_signal": 5658},
-    "st7": {"qr": 5700, "result": 5764, "scan_trigger": 5760, "write_signal": 5762},       # REPLACE 5756 TO 5760,5758 T0 5762, 5754 TO 5764
+    "st7": {"qr": 5700, "result": 5764, "scan_trigger": 5760, "write_signal": 5762},
     "st8": {"qr": 5800, "result": 5854, "scan_trigger": 5856, "write_signal": 5858},
 }
 
-# QR Code validation pattern
 QR_PATTERN = re.compile(r"^[A-Z]+-S-\d+-\d+-\d{11}$")
 
-import socket
 
 def connect_to_plc(plc_ip, timeout=3, retry_delay=5):
-    """Keep trying to connect to a PLC until it succeeds."""
     while True:
         mc = pymcprotocol.Type3E()
         try:
@@ -52,51 +51,24 @@ def connect_to_plc(plc_ip, timeout=3, retry_delay=5):
             logger.error(f"❌ Connection failed to PLC {plc_ip}: {e}. Retrying in {retry_delay} seconds...")
             time.sleep(retry_delay)
 
+
 def read_register(mc, address, num_registers=1):
-    """Read registers from PLC."""
     try:
-        response = mc.batchread_wordunits(headdevice=f"D{address}", readsize=num_registers)
-        return response if response else None
+        return mc.batchread_wordunits(headdevice=f"D{address}", readsize=num_registers)
     except Exception as e:
         logger.error(f"❌ Error reading register {address}: {e}")
         return None
 
+
 def write_register(mc, address, value):
-    """Write to PLC register."""
     try:
         mc.batchwrite_wordunits(headdevice=f"D{address}", values=[value])
         logger.info(f"✅ Wrote {value} to register {address}")
     except Exception as e:
         logger.error(f"❌ Error writing to register {address}: {e}")
 
-def fetch_station_data():
-    """Fetch data from all stations."""
-    station_data = {}
-    for station, plc in PLC_MAPPING.items():
-        mc = connect_to_plc(plc["ip"])
-        if not mc:
-            continue  # Skip if PLC is not connected
-
-        reg = REGISTERS[station]
-        scan_trigger = read_register(mc, reg["scan_trigger"], 1)
-        if not scan_trigger or scan_trigger[0] != 1:
-            logger.info(f"🚫 {station}: No scan trigger")
-            mc.close()
-            continue
-
-        qr_registers = read_register(mc, reg["qr"], 30)
-        result = read_register(mc, reg["result"], 1)
-        mc.close()
-
-        if qr_registers and result:
-            qr_string = convert_registers_to_string(qr_registers)
-            result_value = "OK" if result[0] == 1 else "NOT OK"
-            station_data[station] = {"qr": qr_string, "result": result_value}
-
-    return station_data
 
 def convert_registers_to_string(registers):
-    """Convert PLC register data to a string."""
     try:
         byte_array = b"".join(struct.pack("<H", reg) for reg in registers)
         return byte_array.decode("ascii", errors="ignore").replace("\x00", "").strip()
@@ -104,86 +76,8 @@ def convert_registers_to_string(registers):
         logger.error(f"❌ Error converting register data: {e}")
         return ""
 
-def update_traceability_data():
-    """Update traceability database and PLC signals."""
-    while True:
-        station_data = fetch_station_data()
-
-        for station, data in station_data.items():
-            part_number = data["qr"].strip()
-            plc = PLC_MAPPING[station]
-            reg = REGISTERS[station]
-
-            mc = connect_to_plc(plc["ip"])
-            if not mc:
-                continue  # Skip if PLC is not connected
-
-            # Validate QR format
-            if not QR_PATTERN.match(part_number):
-                logger.warning(f"🚫 {station}: Invalid QR format - '{part_number}'. Writing 3 to write_signal.")
-                write_register(mc, reg["write_signal"], 3)
-                mc.close()
-                continue
-
-            # Fetch part from database
-            obj = TraceabilityData.objects.filter(part_number=part_number).first()
- 
-            if obj:
-                 logger.info(f"🟡 Updating existing record for part: {part_number}")
-            else:
-                 obj = TraceabilityData.objects.create(
-                     part_number=part_number,
-                     date=datetime.today().date(),
-                     time=datetime.now().time(),
-                     shift=get_current_shift()
-                 )
-                 logger.info(f"🟢 Created new record for part: {part_number}")
-
-            # Get previous station (if applicable)
-            station_num = int(station[2])  # Extract station number (e.g., "st3" -> 3)
-            previous_station = f"st{station_num - 1}" if station_num > 1 else None
-            previous_status = getattr(obj, f"{previous_station}_result", None) if previous_station else None
-
-            # Skip previous station check for Station 1
-            if previous_station and previous_status in [None, "NOT OK"]:
-                logger.warning(f"🚨 {station}: Previous station '{previous_station}' result is '{previous_status}'. Blocking operation.")
-                write_register(mc, reg["write_signal"], 5)  # Send 5 to block
-                mc.close()
-                continue
-
-            # Check if this part already exists & has "OK" status in the database
-            existing_ok = getattr(obj, f"{station}_result", None) == "OK"
-
-            if existing_ok:
-                # If part is already "OK", send "2" and do not update result
-                write_register(mc, reg["write_signal"], 2)
-                write_register(mc, reg["scan_trigger"], 0)  # Reset scan trigger after sending 2
-                logger.info(f"🟢 {station}: Part '{part_number}' is already OK. Sending 2.")
-                mc.close()
-                continue  # Skip further processing
-
-            # Fetch current station result
-            result = read_register(mc, reg["result"], 1)
-            result_value = "OK" if result and result[0] == 1 else "NOT OK"
-
-            # Save result to database
-            setattr(obj, f"{station}_result", result_value)
-            obj.save()
-
-            # Determine and write PLC signal
-            write_signal = 4 if result_value == "OK" else 1  # 4 = OK, 1 = NOT OK
-            write_register(mc, reg["write_signal"], write_signal)
-
-            # Send 0 only after sending 5 or 2
-            if write_signal in [5, 2]:
-                time.sleep(1)  # Small delay before sending 0
-                write_register(mc, reg["scan_trigger"], 0)
-
-            mc.close()
-        time.sleep(2)
 
 def get_current_shift():
-    """Determine the current production shift."""
     now = datetime.now().time()
     if datetime.strptime("07:00", "%H:%M").time() <= now < datetime.strptime("15:30", "%H:%M").time():
         return 'Shift 1'
@@ -191,3 +85,99 @@ def get_current_shift():
         return 'Shift 2'
     else:
         return 'Shift 3'
+
+
+def process_station(station):
+    plc = PLC_MAPPING[station]
+    reg = REGISTERS[station]
+
+    while True:
+        mc = None
+        try:
+            mc = connect_to_plc(plc["ip"])
+            if not mc:
+                continue
+
+            scan_trigger = read_register(mc, reg["scan_trigger"], 1)
+            if not scan_trigger or scan_trigger[0] != 1:
+                logger.info(f"⏸️ {station}: No scan trigger")
+                mc.close()
+                time.sleep(1)
+                continue
+
+            qr_registers = read_register(mc, reg["qr"], 30)
+            result = read_register(mc, reg["result"], 1)
+            if not qr_registers or not result:
+                logger.warning(f"⚠️ {station}: Failed to read QR/result")
+                write_register(mc, reg["scan_trigger"], 0)
+                mc.close()
+                continue
+
+            qr_string = convert_registers_to_string(qr_registers).strip()
+            part_number = qr_string
+            result_value = "OK" if result[0] == 1 else "NOT OK"
+
+            if not QR_PATTERN.match(part_number):
+                logger.warning(f"🚫 {station}: Invalid QR format - '{part_number}'")
+                write_register(mc, reg["write_signal"], 3)
+                write_register(mc, reg["scan_trigger"], 0)
+                mc.close()
+                continue
+
+            obj = TraceabilityData.objects.filter(part_number=part_number).first()
+            if not obj:
+                obj = TraceabilityData.objects.create(
+                    part_number=part_number,
+                    date=datetime.today().date(),
+                    time=datetime.now().time(),
+                    shift=get_current_shift()
+                )
+                logger.info(f"🟢 {station}: Created record for {part_number}")
+            else:
+                logger.info(f"🟡 {station}: Updating record for {part_number}")
+
+            station_num = int(station[2:])
+            prev_station = f"st{station_num - 1}" if station_num > 1 else None
+            prev_result = getattr(obj, f"{prev_station}_result", None) if prev_station else None
+
+            if prev_station and prev_result in [None, "NOT OK"]:
+                logger.warning(f"🚨 {station}: Previous station '{prev_station}' result: {prev_result}")
+                write_register(mc, reg["write_signal"], 5)
+                write_register(mc, reg["scan_trigger"], 0)
+                mc.close()
+                continue
+
+            existing_ok = getattr(obj, f"{station}_result", None) == "OK"
+            if existing_ok:
+                write_register(mc, reg["write_signal"], 2)
+                logger.info(f"✅ {station}: Part already OK. Sending 2.")
+                write_register(mc, reg["scan_trigger"], 0)
+                mc.close()
+                continue
+
+            setattr(obj, f"{station}_result", result_value)
+            obj.save()
+            logger.info(f"✅ {station}: Updated DB with result '{result_value}'")
+
+            signal = 4 if result_value == "OK" else 1
+            write_register(mc, reg["write_signal"], signal)
+            write_register(mc, reg["scan_trigger"], 0)
+
+        except Exception as e:
+            logger.error(f"❌ Error in {station}: {e}")
+        finally:
+            if mc:
+                mc.close()
+            time.sleep(2)
+
+
+# Function to start PLC monitoring in a separate thread
+def start_plc_monitoring():
+    for station in PLC_MAPPING.keys():
+        t = threading.Thread(target=process_station, args=(station,), daemon=True)
+        t.start()
+    logger.info("🚀 PLC Monitoring started in background threads.")
+
+# Start Django server first
+if __name__ == "__main__":
+    start_plc_monitoring()  # Run PLC handling in background threads
