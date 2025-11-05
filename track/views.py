@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from .models import TraceabilityData
 import logging
 from .qr_utils import generate_qr_code  # ✅ Using latest QR code function
@@ -9,6 +9,7 @@ from pymodbus.client import ModbusTcpClient
 import time
 import threading
 from .plc_utils import PLC_MAPPING 
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 # Shared dictionary for storing PLC statuses
@@ -149,3 +150,22 @@ def search_parts(request):
     queryset = TraceabilityData.objects.all()
     filter = TraceabilityDataFilter(request.GET, queryset=queryset)
     return render(request, 'track/search_parts.html', {'filter': filter})
+
+def export_parts_to_excel(request):
+    # Apply the same filters used on the search page
+    queryset = TraceabilityData.objects.all()
+    trace_filter = TraceabilityDataFilter(request.GET, queryset=queryset)
+
+    # Convert queryset to DataFrame
+    data = trace_filter.qs.values(
+        'sr_no', 'part_number', 'date', 'time', 'shift',
+        'st1_result', 'st2_result', 'st3_result', 'st4_result', 'st5_result'
+    )
+    df = pd.DataFrame(data)
+
+    # Create Excel file in memory
+    response = HttpResponse(content_type='application/vnd.ms-excel')
+    response['Content-Disposition'] = 'attachment; filename="traceability_data.xlsx"'
+    df.to_excel(response, index=False)
+
+    return response

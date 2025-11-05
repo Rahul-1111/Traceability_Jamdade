@@ -181,7 +181,11 @@
                 <button type="submit">Search</button>
                 <a href="{% url 'search_parts' %}" class="clear-button">Clear</a>
             </div>
-            
+            <div class="form-buttons" style="justify-content: center; margin-bottom: 10px;">
+                <a href="{% url 'export_parts' %}?{{ request.GET.urlencode }}" class="clear-button" style="background-color: #28a745;">
+                    Export to Excel
+                </a>
+            </div>
         </form>
         
         <h2>Results</h2>
