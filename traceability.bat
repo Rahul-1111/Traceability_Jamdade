@@ -1,7 +1,7 @@
 @echo off
 cd /d "C:\Users\lenovo\Documents\FourF"
 echo Activating Virtual Environment...
-call .\myenv\Scripts\activate
+call .\env1\Scripts\activate
 
 echo Starting Modbus Communication...
 start cmd /k "python manage.py start_modbus"

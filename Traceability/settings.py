@@ -64,6 +64,21 @@ DATABASES = {
     }
 }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'mssql',
+#         'NAME': 'TraceabilityDB',
+#         'USER': 'SAA',
+#         'PASSWORD': '12345678',
+#         'HOST': r'DESKTOP-3RCGQBS\SQLEXPRESS',   # Raw string to handle backslash
+#         'PORT': '',                              # Leave blank for named instances
+#         'OPTIONS': {
+#             'driver': 'ODBC Driver 17 for SQL Server',  # Required
+#         },
+#     }
+# }
+
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
