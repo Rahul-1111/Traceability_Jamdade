@@ -156,6 +156,7 @@ def process_station(station):
                 continue
 
             setattr(obj, f"{station}_result", result_value)
+            setattr(obj, f"{station}_time", datetime.now().time())  # ✅ Save the current time for the station
             obj.save()
             logger.info(f"✅ {station}: Updated DB with result '{result_value}'")
 

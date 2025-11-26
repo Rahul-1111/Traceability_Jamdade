@@ -109,13 +109,15 @@ def fetch_torque_data(request):
             Q(st3_result="NOT OK") | Q(st4_result="NOT OK") |
             Q(st5_result="NOT OK") | Q(st6_result="NOT OK") |
             Q(st7_result="NOT OK") | Q(st8_result="NOT OK") |
+            Q(st9_result="NOT OK") | Q(st10_result="NOT OK") |
             Q(st1_result__isnull=True) | Q(st2_result__isnull=True) |
             Q(st3_result__isnull=True) | Q(st4_result__isnull=True) |
             Q(st5_result__isnull=True) | Q(st6_result__isnull=True) |
             Q(st7_result__isnull=True) | Q(st8_result__isnull=True) |
+            Q(st9_result__isnull=True) | Q(st10_result__isnull=True) |
             Q(st1_result="") | Q(st2_result="") | Q(st3_result="") |
             Q(st4_result="") | Q(st5_result="") | Q(st6_result="") |
-            Q(st7_result="") | Q(st8_result="")
+            Q(st7_result="") | Q(st8_result="") | Q(st9_result="") | Q(st10_result="")
         )
 
         # Retrieve the latest 10 records, ordered by date and time in descending order
@@ -138,6 +140,8 @@ def fetch_torque_data(request):
                 "st6_result": item.st6_result,
                 "st7_result": item.st7_result,
                 "st8_result": item.st8_result,
+                "st9_result": item.st9_result,
+                "st10_result": item.st10_result,
             }
             for item in combined_data
         ]
@@ -159,7 +163,7 @@ def export_parts_to_excel(request):
     # Convert queryset to DataFrame
     data = trace_filter.qs.values(
         'sr_no', 'part_number', 'date', 'time', 'shift',
-        'st1_result', 'st2_result', 'st3_result', 'st4_result', 'st5_result'
+        'st1_result', 'st2_result', 'st3_result', 'st4_result', 'st5_result', 'st6_result', 'st7_result', 'st8_result', 'st9_result', 'st10_result'
     )
     df = pd.DataFrame(data)
 

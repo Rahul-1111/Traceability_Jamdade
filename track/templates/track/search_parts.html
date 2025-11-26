@@ -205,6 +205,8 @@
                     <th>Station 6 Result</th>
                     <th>Station 7 Result</th>
                     <th>Station 8 Result</th>
+                    <th>Station 9 Result</th>
+                    <th>Station 10 Result</th>
                 </tr>
             </thead>
             <tbody>
@@ -223,6 +225,8 @@
                         <td>{{ data.st6_result|default_if_none:"" }}</td>
                         <td>{{ data.st7_result|default_if_none:"" }}</td>
                         <td>{{ data.st8_result|default_if_none:"" }}</td>
+                        <td>{{ data.st9_result|default_if_none:"" }}</td>
+                        <td>{{ data.st10_result|default_if_none:"" }}</td>
                     </tr>
                 {% empty %}
                     <tr>
